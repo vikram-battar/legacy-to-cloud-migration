@@ -1,0 +1,4 @@
+flask>=3.0
+gunicorn>=21.0
+# psycopg (v3) is only needed when DATABASE_URL points at Postgres.
+# Install with: pip install -r requirements.txt -r requirements-pg.txt

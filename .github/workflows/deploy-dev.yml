@@ -1,0 +1,53 @@
+name: Deploy to dev
+
+# Auto-deploys every merged commit to dev. Dev is allowed to be a little
+# rough — that's what it's for.
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: legacymig-dev-app
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write # OIDC to AWS, no long-lived keys
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-deploy-dev
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push (immutable tag = git SHA)
+        run: |
+          docker build -f container/Dockerfile \
+            -t $ECR_REPO:${{ github.sha }} .
+          docker push $ECR_REPO:${{ github.sha }}
+
+      - name: Deploy to ECS
+        run: |
+          # Update the service with the new image tag via terraform,
+          # or directly:
+          aws ecs update-service \
+            --cluster legacymig-dev-cluster \
+            --service legacymig-dev-app \
+            --force-new-deployment \
+            --region $AWS_REGION
+          # NOTE: update-service with --force-new-deployment re-pulls the
+          # task definition's image. For tag-pinned deploys, run
+          # `terraform apply -var image_tag=${{ github.sha }}` in
+          # terraform/envs/dev instead — that keeps the tag in state.
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "http://$ALB_DNS"
+        env:
+          ALB_DNS: ${{ vars.DEV_ALB_DNS }}

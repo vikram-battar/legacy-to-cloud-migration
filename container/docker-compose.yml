@@ -1,0 +1,32 @@
+# Local parity: the migrated app against a real Postgres, the way ECS runs it.
+# This is the closest thing to prod you can run on a laptop.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: inventory
+      POSTGRES_PASSWORD: inventory-dev-only
+      POSTGRES_DB: inventory
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inventory"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: ..
+      dockerfile: container/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://inventory:inventory-dev-only@db:5432/inventory
+      LOG_LEVEL: INFO
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

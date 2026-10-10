@@ -1,0 +1,71 @@
+name: Deploy to prod
+
+# Manual gate: this workflow only runs when YOU trigger it, and the
+# `prod` GitHub environment requires an approved reviewer before any
+# step executes. No approval, no deploy. Set it up at:
+# repo Settings → Environments → prod → Required reviewers.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Git SHA of the image to deploy (must already be in ECR)"
+        required: true
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPO: legacymig-prod-app
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: prod # ← the manual approval gate lives here
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/github-deploy-prod
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify image exists in ECR
+        run: |
+          aws ecr describe-images \
+            --repository-name $ECR_REPO \
+            --image-ids imageTag=${{ inputs.image_tag }} \
+            --region $AWS_REGION
+
+      - name: Deploy via Terraform (tag pinned in state)
+        run: |
+          cd terraform/envs/prod
+          terraform init -input=false
+          terraform apply -input=false -auto-approve \
+            -var "image_tag=${{ inputs.image_tag }}"
+
+      - name: Wait for steady state
+        run: |
+          aws ecs wait services-stable \
+            --cluster legacymig-prod-cluster \
+            --services legacymig-prod-app \
+            --region $AWS_REGION
+
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "http://${{ vars.PROD_ALB_DNS }}"
+
+# --- Deployment strategy note ---------------------------------------------
+# The ECS service in terraform/modules/ecs uses a ROLLING deployment:
+# ECS starts new tasks, the ALB drains old connections, old tasks stop.
+# Simple, no extra infra, brief mixed-version window.
+#
+# If you need true blue/green (two full environments, instant cutover,
+# one-click rollback), swap the service's deployment controller to
+# CODE_DEPLOY and add an aws_codedeploy_deployment_group with a second
+# target group + test listener. The pipeline then calls
+# `aws deploy create-deployment` instead of `terraform apply`, and
+# CodeDeploy shifts traffic (canary or all-at-once) with automatic
+# rollback on failed ALB health checks. The task definition and image
+# flow stay exactly the same — only the traffic-shifting mechanism
+# changes. For this app's size, rolling is the right default; go
+# blue/green when a bad deploy costs real money.
