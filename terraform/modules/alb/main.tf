@@ -12,7 +12,7 @@ variable "public_subnet_ids" {
 
 variable "health_check_path" {
   type    = string
-  default = "/healthz"
+  default = "/readyz"
 }
 
 resource "aws_security_group" "alb" {

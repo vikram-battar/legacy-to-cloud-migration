@@ -3,7 +3,7 @@
 Same routes and behavior as ../legacy-app/app.py, rebuilt with cloud habits:
 - all config from environment variables (12-factor)
 - Postgres via DATABASE_URL, with SQLite as a local-dev fallback
-- /healthz endpoint for the ALB target group
+- /healthz (liveness) and /readyz (readiness) endpoints for the ALB target group
 - structured JSON logging to stdout (CloudWatch picks it up, no agent needed)
 - runs as a non-root user in the container, gunicorn in front
 """
@@ -115,15 +115,22 @@ def _log_request():
 
 @app.route("/healthz")
 def healthz():
-    """ALB target group hits this. Must be cheap and dependency-light,
-    but a DB ping catches the most common real outage."""
+    """Liveness: is the process alive. Cheap by design — the ALB hits this
+    constantly, so it must never touch the database."""
+    return jsonify({"status": "ok"}), 200
+
+
+@app.route("/readyz")
+def readyz():
+    """Readiness: can this instance serve traffic. A DB ping catches the
+    most common real outage; ECS gates task registration on this."""
     try:
         conn = get_db()
         conn.execute("SELECT 1")
         conn.close()
         return jsonify({"status": "ok"}), 200
-    except Exception as exc:  # noqa: BLE001 — health check must never raise
-        log.error("health check failed: %s", exc)
+    except Exception as exc:  # noqa: BLE001 — readiness must never raise
+        log.error("readiness check failed: %s", exc)
         return jsonify({"status": "degraded", "error": str(exc)}), 503
 
 

@@ -29,12 +29,30 @@ def test_healthz_ok(client):
     assert r.get_json()["status"] == "ok"
 
 
-def test_healthz_degraded_on_db_failure(client, monkeypatch):
+def test_healthz_ok_even_when_db_down(client, monkeypatch):
+    # liveness must never touch the database
+
     def boom():
         raise RuntimeError("db is gone")
 
     monkeypatch.setattr(appmod, "get_db", boom)
     r = client.get("/healthz")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
+
+
+def test_readyz_ok(client):
+    r = client.get("/readyz")
+    assert r.status_code == 200
+    assert r.get_json()["status"] == "ok"
+
+
+def test_readyz_degraded_on_db_failure(client, monkeypatch):
+    def boom():
+        raise RuntimeError("db is gone")
+
+    monkeypatch.setattr(appmod, "get_db", boom)
+    r = client.get("/readyz")
     assert r.status_code == 503
     assert r.get_json()["status"] == "degraded"
 
