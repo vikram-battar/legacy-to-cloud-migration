@@ -91,3 +91,8 @@ output "alb_dns_name" {
 output "ecr_repository_url" {
   value = module.ecr.repository_url
 }
+
+output "rds_endpoint" {
+  value       = module.rds.endpoint
+  description = "Build DATABASE_URL from this: postgresql://<user>:<pass>@<endpoint>/inventory (creds in Secrets Manager)"
+}

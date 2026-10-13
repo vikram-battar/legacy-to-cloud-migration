@@ -76,9 +76,14 @@ variable "image_tag" {
 
 output "alb_dns_name" {
   value       = module.alb.alb_dns_name
-  description = "Hit this after deploy; /healthz should return 200"
+  description = "Hit this after deploy; /readyz should return 200"
 }
 
 output "ecr_repository_url" {
   value = module.ecr.repository_url
+}
+
+output "rds_endpoint" {
+  value       = module.rds.endpoint
+  description = "Build DATABASE_URL from this: postgresql://<user>:<pass>@<endpoint>/inventory (creds in Secrets Manager)"
 }
