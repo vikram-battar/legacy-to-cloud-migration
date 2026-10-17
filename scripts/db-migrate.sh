@@ -3,6 +3,10 @@
 #
 # Usage:
 #   SQLITE_DB=./inventory.db PG_DSN="postgresql://user:pass@host:5432/inventory" ./scripts/db-migrate.sh
+#   SQLITE_DB=./inventory.db PG_DSN="postgresql://user:pass@host:5432/inventory" ./scripts/db-migrate.sh --dry-run
+#
+# --dry-run exports the CSV and shows what would be loaded, without touching
+# Postgres. Use it to sanity-check row counts before the real run.
 #
 # How it works: dumps the SQLite table to CSV, then COPYs it into Postgres.
 # This is the simple version for a small table. For a large or live database,
@@ -14,6 +18,12 @@ set -euo pipefail
 
 : "${SQLITE_DB:?set SQLITE_DB to the legacy sqlite file}"
 : "${PG_DSN:?set PG_DSN to the target postgres connection string}"
+
+DRY_RUN=0
+if [ "${1:-}" = "--dry-run" ]; then
+  DRY_RUN=1
+  echo "==> DRY RUN: postgres will not be touched"
+fi
 
 TMPDIR_WORK=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
@@ -29,6 +39,13 @@ SQL
 
 ROWS=$(($(wc -l < "$CSV") - 1))
 echo "==> exported $ROWS rows"
+echo "==> preview (first 5 rows):"
+head -5 "$CSV"
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "==> dry run complete: $ROWS rows would be COPYed into items_staging"
+  exit 0
+fi
 
 echo "==> loading into Postgres (staging table, idempotent)"
 psql "$PG_DSN" <<SQL
