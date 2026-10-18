@@ -33,7 +33,7 @@ The diff between those two folders is the whole migration in miniature.
 environments:
 
 - VPC with public/private subnets across 2 AZs, NAT gateways
-- ALB in the public subnets, health-checking `/healthz`
+- ALB in the public subnets, health-checking `/readyz`
 - ECS Fargate running the container from ECR (immutable SHA tags)
 - RDS Postgres 16 in the private subnets, encrypted, password in Secrets
   Manager — never in Terraform state
@@ -41,6 +41,28 @@ environments:
   count), SNS topic for notifications
 - IAM roles with least privilege: the task execution role can pull the
   image, write logs, and read one secret. Nothing else.
+
+How it hangs together:
+
+```
+                ┌─────────────────────────────────────────────┐
+                │                    VPC                       │
+                │                                              │
+  internet ──▶  │  ┌─────┐   ┌──────────┐   ┌──────────────┐   │
+                │  │ ALB │──▶│ ECS      │──▶│ RDS Postgres │   │
+                │  │     │   │ Fargate  │   │ (private     │   │
+                │  └─────┘   │ /readyz  │   │  subnets)    │   │
+                │     │      └──────────┘   └──────────────┘   │
+                │     │            │                           │
+                │     │      ┌─────┴──────┐                    │
+                │     └─────▶│ CloudWatch │                    │
+                │            │ logs+alarms│                    │
+                │            └────────────┘                    │
+                └─────────────────────────────────────────────┘
+                        ▲
+        ECR ────────────┘   (pipeline builds, scans, pushes;
+        image SHA tag ─────▶ then ECS picks it up)
+```
 
 Dev is cheap (1 task, single-AZ RDS, no deletion protection). Prod is
 real (2 tasks, Multi-AZ, deletion protection on).
