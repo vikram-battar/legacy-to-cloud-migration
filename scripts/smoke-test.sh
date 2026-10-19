@@ -10,9 +10,12 @@ BASE="${BASE%/}"
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
-# 1. health endpoint
+# 1. health endpoints
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/healthz")
 [ "$CODE" = "200" ] && pass "healthz returns 200" || fail "healthz returned $CODE"
+
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/readyz")
+[ "$CODE" = "200" ] && pass "readyz returns 200" || fail "readyz returned $CODE"
 
 # 2. write a row
 CREATE=$(curl -s -X POST "$BASE/items" \
